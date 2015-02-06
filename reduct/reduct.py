@@ -15,6 +15,10 @@ from contextlib import contextmanager
 
 @contextmanager
 def tempdir():
+    """
+    Context manager to create a temporary directory and ensure it's
+    removed completely when we're done
+    """
     dirname = tempfile.mkdtemp()
     yield dirname
     try:
@@ -23,9 +27,10 @@ def tempdir():
         if exc.errno != errno.ENOENT:
             raise
 
-def do_strace(*args):
+def strace_iter(*args):
     """
-    Perform the strace and return the strace output
+    Perform the strace and then yields each line of the recorded
+    strace
     """
     with tempdir() as dirname:
         opfile = os.path.join(dirname, "strace_output.log")
@@ -39,13 +44,17 @@ def do_strace(*args):
             print(repr(exc))
 
         with open(opfile, 'r') as strace:
-            result = strace.read()
-    return result
-
+            for line in strace:
+                yield line
 
 def reduct(source, destination, *args):
     """
     Perform the reduct
+
+    Args:
+        source (string): The source directory containing the tool to reduce
+
+        destination (string): Where to copy the reduced toolchain to
     """
     def copy_full(sourcefile):
         chunk = sourcefile[len(source):].lstrip("/")
@@ -57,23 +66,34 @@ def reduct(source, destination, *args):
             print("Copying %s" % sourcefile)
             shutil.copy2(sourcefile, target)
 
+    def make_link(sourcelink):
+        print("Here we would make a softlink from %s to %s" % (
+             sourcelink, os.path.realpath(sourcelink)))
+        #link_target = os.path.realpath(sourcelink)
+    
+
+
+
     if not os.path.isdir(destination):
         os.makedirs(destination)
 
     print("Executing: %s" % (" ".join(args)))
-    strace = do_strace(*args)
-    print("Processing strace...")
 
-    for line in strace.split("\n"):
+    for line in strace_iter(*args):
         try:
             syscall = line.split()[1]
         except IndexError:
             break
         path = syscall[syscall.find("\"")+1:syscall.rfind("\"")]
+        path = os.path.abspath(path)
         if not os.path.isfile(path):
             continue
         if path.startswith(source):
-            copy_full(path)
+            if os.path.islink(path):
+                make_link(path)
+            else:
+                copy_full(path)
+
 
 def main(argv=sys.argv[1:]):
     parser = argparse.ArgumentParser()
@@ -91,3 +111,4 @@ def main(argv=sys.argv[1:]):
 
 if __name__ == "__main__":
     main()
+

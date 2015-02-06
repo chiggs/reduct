@@ -37,6 +37,7 @@ setup(
     license="BSD",
     zip_safe=False,
     keywords='reduct',
+    entry_points = { 'console_scripts': ['reduct=reduct.reduct:main']},
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
