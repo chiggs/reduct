@@ -9,7 +9,6 @@ except ImportError:
 
 
 readme = open('README.rst').read()
-history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = [
     # TODO: put package requirements here
@@ -23,7 +22,7 @@ setup(
     name='reduct',
     version='0.1.0',
     description='Reduce a toolchain by discovering which files it really uses',
-    long_description=readme + '\n\n' + history,
+    long_description=readme + '\n\n',
     author='Chris Higgs',
     author_email='chris.higgs@potentialventures.com',
     url='https://github.com/chiggs/reduct',
