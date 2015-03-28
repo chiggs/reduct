@@ -35,7 +35,7 @@ def strace_iter(*args):
     with tempdir() as dirname:
         opfile = os.path.join(dirname, "strace_output.log")
 
-        cmd = ["strace", "-f", "-e", "trace=open,execve", "-o", "%s" % opfile]
+        cmd = ["strace", "-f", "-e", "trace=open,execve,access", "-o", "%s" % opfile]
         cmd.extend(args)
         print("Running: %s" % " ".join(cmd))
         try:
@@ -67,12 +67,34 @@ def reduct(source, destination, *args):
             shutil.copy2(sourcefile, target)
 
     def make_link(sourcelink):
-        print("Here we would make a softlink from %s to %s" % (
-             sourcelink, os.path.realpath(sourcelink)))
-        #link_target = os.path.realpath(sourcelink)
-    
+        link_target = os.path.realpath(sourcelink)
 
+        # First of all ensure the target exists
+        if link_target.startswith(source):
+            handle_file(link_target)
 
+        # Extract the common prefix and create a relative symlink
+        chunk = sourcelink[len(source):].lstrip("/")
+        dirname = os.path.dirname(chunk)
+        target = os.path.join(destination, dirname)
+        filename = os.path.split(sourcelink)[-1]
+        link_name = os.path.join(os.path.join(destination, dirname), filename)
+
+        if not os.path.isdir(target):
+            os.makedirs(target)
+
+        new_target_dir = os.path.relpath(os.path.dirname(link_target),
+                                         os.path.dirname(sourcelink))
+        new_target = os.path.join(new_target_dir, os.path.split(link_target)[-1])
+        if not os.path.isfile(link_name):
+            print("Making softlink from %s -> %s" % (link_name, new_target))
+            os.symlink(new_target, link_name)
+
+    def handle_file(path):
+        if os.path.islink(path):
+            make_link(path)
+        else:
+            copy_full(path)
 
     if not os.path.isdir(destination):
         os.makedirs(destination)
@@ -89,10 +111,8 @@ def reduct(source, destination, *args):
         if not os.path.isfile(path):
             continue
         if path.startswith(source):
-            if os.path.islink(path):
-                make_link(path)
-            else:
-                copy_full(path)
+            handle_file(path)
+
 
 
 def main(argv=sys.argv[1:]):
@@ -100,7 +120,7 @@ def main(argv=sys.argv[1:]):
     parser.add_argument('--source', dest='source', type=str, required=True,
                    help='Source directory containing the tool')
     parser.add_argument('--dest', dest='dest', type=str, required=True,
-                   help='Destination directory for the redacted tool')
+                   help='Destination directory for the reducted tool')
     args, extra = parser.parse_known_args(args=argv)
 
     if not os.path.isdir(args.source):
