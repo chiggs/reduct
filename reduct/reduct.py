@@ -35,7 +35,7 @@ def strace_iter(*args):
     with tempdir() as dirname:
         opfile = os.path.join(dirname, "strace_output.log")
 
-        cmd = ["strace", "-f", "-e", "trace=open,execve,access", "-o", "%s" % opfile]
+        cmd = ["strace", "-f", "-e", "trace=file", "-o", "%s" % opfile]
         cmd.extend(args)
         print("Running: %s" % " ".join(cmd))
         try:
@@ -47,7 +47,7 @@ def strace_iter(*args):
             for line in strace:
                 yield line
 
-def reduct(source, destination, *args):
+def reduct(source, destination, dryrun, *args):
     """
     Perform the reduct
 
@@ -61,10 +61,15 @@ def reduct(source, destination, *args):
         dirname = os.path.dirname(chunk)
         target = os.path.join(destination, dirname)
         if not os.path.isdir(target):
-            os.makedirs(target)
+            print("Making dirs to %s" % target)
+            if not dryrun:
+                os.makedirs(target)
         if not os.path.isfile(os.path.join(target, os.path.split(chunk)[-1])):
             print("Copying %s" % sourcefile)
-            shutil.copy2(sourcefile, target)
+            if not dryrun:
+                shutil.copy2(sourcefile, target)
+        else:
+            print("Already exists: %s" % os.path.join(target, os.path.split(chunk)[-1]))
 
     def make_link(sourcelink):
         link_target = os.path.realpath(sourcelink)
@@ -81,14 +86,19 @@ def reduct(source, destination, *args):
         link_name = os.path.join(os.path.join(destination, dirname), filename)
 
         if not os.path.isdir(target):
-            os.makedirs(target)
+            print("Making dirs to %s" % target)
+            if not dryrun:
+                os.makedirs(target)
 
         new_target_dir = os.path.relpath(os.path.dirname(link_target),
                                          os.path.dirname(sourcelink))
         new_target = os.path.join(new_target_dir, os.path.split(link_target)[-1])
         if not os.path.isfile(link_name):
             print("Making softlink from %s -> %s" % (link_name, new_target))
-            os.symlink(new_target, link_name)
+            if not dryrun:
+                os.symlink(new_target, link_name)
+        else:
+            print("Already exists: %s" % (link_name))
 
     def handle_file(path):
         if os.path.islink(path):
@@ -97,7 +107,9 @@ def reduct(source, destination, *args):
             copy_full(path)
 
     if not os.path.isdir(destination):
-        os.makedirs(destination)
+        print("Making dirs to %s" % destination)
+        if not dryrun:
+            os.makedirs(destination)
 
     print("Executing: %s" % (" ".join(args)))
 
@@ -105,14 +117,19 @@ def reduct(source, destination, *args):
         try:
             syscall = line.split()[1]
         except IndexError:
+            print("Failed on %s" % line)
             break
-        path = syscall[syscall.find("\"")+1:syscall.rfind("\"")]
-        path = os.path.abspath(path)
+        left = syscall.find("\"") + 1
+        right = left + syscall[left:].find("\"")
+        path = syscall[left:right]
+        path = os.path.realpath(os.path.abspath(path))
         if not os.path.isfile(path):
+            print("%s isn't a file (%s)" % (path, syscall))
             continue
         if path.startswith(source):
             handle_file(path)
-
+        else:
+            print("Ignoring %s (doesn't start with %s)" % (path, source))
 
 
 def main(argv=sys.argv[1:]):
@@ -121,13 +138,16 @@ def main(argv=sys.argv[1:]):
                    help='Source directory containing the tool')
     parser.add_argument('--dest', dest='dest', type=str, required=True,
                    help='Destination directory for the reducted tool')
+    parser.add_argument('--dry', dest='dryrun', action='store_true', default=False,
+                   help='Dry run without modifying any files')
+
     args, extra = parser.parse_known_args(args=argv)
 
     if not os.path.isdir(args.source):
         parser.print_help()
         sys.exit(1)
 
-    reduct(args.source, args.dest, *extra)
+    reduct(args.source, args.dest, args.dryrun, *extra)
 
 if __name__ == "__main__":
     main()
